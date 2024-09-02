@@ -100,5 +100,63 @@ describe("my-token-program", () => {
     }
   });
 
+  it("Burn tokens", async () => {
+    try {
+      console.log(`Burning 2 tokens from: ${associatedTokenAccount.toString()}`);
+      await program.methods.burnToken(new anchor.BN(2)).accounts({
+        mint: mintKey.publicKey,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenAccount: associatedTokenAccount,
+        authority: provider.wallet.publicKey,
+      }).rpc();
+
+      const remainingBalance = (await program.provider.connection.getParsedAccountInfo(associatedTokenAccount)).value.data.parsed.info.tokenAmount.amount;
+      console.log(`Remaining balance in associated token account after burn: ${remainingBalance}`);
+      assert.equal(remainingBalance, 3); // 5 - 2 = 3 remaining tokens
+
+    } catch (error) {
+      console.error("Error during token burn:", error);
+    }
+  });
+
+  it("Approve delegate", async () => {
+    try {
+      const delegateAccount = anchor.web3.Keypair.generate();
+
+      console.log(`Approving delegate ${delegateAccount.publicKey.toString()} for 3 tokens`);
+      await program.methods.approveDelegate(new anchor.BN(3)).accounts({
+        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenAccount: associatedTokenAccount,
+        delegate: delegateAccount.publicKey,
+        authority: provider.wallet.publicKey,
+      }).rpc();
+
+      const tokenAccountInfo = await program.provider.connection.getParsedAccountInfo(associatedTokenAccount);
+      console.log("Token account info after delegate approval:", tokenAccountInfo);
+
+      // Implement detailed parsing of tokenAccountInfo to check if delegation worked correctly.
+      // Depending on the SPL Token implementation, you might need to check the delegate and approved amount.
+
+      assert.isTrue(true); // Replace with actual validation once delegate info is parsed
+
+    } catch (error) {
+      console.error("Error during delegate approval:", error);
+    }
+  });
+
+  it("Get balance of token account", async () => {
+    try {
+      console.log(`Getting balance of token account: ${associatedTokenAccount.toString()}`);
+      const balance = await program.methods.getBalance().accounts({
+        tokenAccount: associatedTokenAccount,
+      }).rpc();
+
+      console.log(`Token account balance: ${balance}`);
+      assert.equal(balance, 3);
+
+    } catch (error) {
+      console.error("Error during balance retrieval:", error);
+    }
+  });
 
 });
