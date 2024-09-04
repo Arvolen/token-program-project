@@ -14,6 +14,16 @@ use {
     spl_transfer_hook_interface::error::TransferHookError,
 };
 
+use anchor_spl::{
+    associated_token::AssociatedToken,
+    token::{Mint},
+    metadata::{
+        create_metadata_accounts_v3,
+        mpl_token_metadata::types::DataV2,
+        CreateMetadataAccountsV3, 
+        Metadata as Metaplex,
+    },
+};
 
 declare_id!("J6zNmngkHVqYMXkAgZtUKCstQvV6MHCBXqijh2Tn4YJA");
 
@@ -56,9 +66,50 @@ pub mod my_token_program {
     }
 
 
-    pub fn mint_token(ctx: Context<MintToken>, amount: u64) -> Result<()> {
+    pub fn init_token(ctx: Context<InitToken>, metadata: InitTokenParams) -> Result<()> {
+        let seeds = &["mint".as_bytes(), &[ctx.bumps.mint]];
+        let signer = [&seeds[..]];
+
+        let token_data: DataV2 = DataV2 {
+            name: metadata.name,
+            symbol: metadata.symbol,
+            uri: metadata.uri,
+            seller_fee_basis_points: 0,
+            creators: None,
+            collection: None,
+            uses: None,
+        };
+
+        let metadata_ctx = CpiContext::new_with_signer(
+            ctx.accounts.token_metadata_program.to_account_info(),
+            CreateMetadataAccountsV3 {
+                payer: ctx.accounts.payer.to_account_info(),
+                update_authority: ctx.accounts.mint.to_account_info(),
+                mint: ctx.accounts.mint.to_account_info(),
+                metadata: ctx.accounts.metadata.to_account_info(),
+                mint_authority: ctx.accounts.mint.to_account_info(),
+                system_program: ctx.accounts.system_program.to_account_info(),
+                rent: ctx.accounts.rent.to_account_info(),
+            },
+            &signer
+        );
+
+        create_metadata_accounts_v3(
+            metadata_ctx,
+            token_data,
+            false,
+            true,
+            None,
+        )?;
+
+        msg!("Token mint created successfully.");
+
+        Ok(())
+    }
+
+    pub fn mint_token(ctx: Context<MintToken>,) -> Result<()> {
         // Log minting details
-        msg!("Minting {} tokens to account: {}", amount, ctx.accounts.token_account.key());
+        msg!("Minting 10 tokens to account: {}", ctx.accounts.token_account.key());
         msg!("Mint authority: {}", ctx.accounts.authority.key());
         // Create the MintTo struct for our context
         let cpi_accounts = MintTo {
@@ -72,15 +123,15 @@ pub mod my_token_program {
         let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
 
         // Execute anchor's helper function to mint tokens
-        token::mint_to(cpi_ctx, amount)?;
+        token::mint_to(cpi_ctx, 10)?;
         
         Ok(())
     }
 
-    pub fn transfer_token(ctx: Context<TransferToken>, amount: u64) -> Result<()> {
-        // Log transfer details
-        msg!("Transferring {} tokens from account: {} to account: {}", amount, ctx.accounts.from.key(), ctx.accounts.to.key());
-        msg!("Transfer authority: {}", ctx.accounts.from_authority.key());
+    pub fn transfer_token(ctx: Context<TransferToken>) -> Result<()> {
+       // Log transfer details
+       msg!("Transferring 5 tokens from account: {} to account: {}", ctx.accounts.from.key(), ctx.accounts.to.key());
+       msg!("Transfer authority: {}", ctx.accounts.from_authority.key());
         // Create the Transfer struct for our context
         let transfer_instruction = Transfer{
             from: ctx.accounts.from.to_account_info(),
@@ -93,7 +144,7 @@ pub mod my_token_program {
         let cpi_ctx = CpiContext::new(cpi_program, transfer_instruction);
 
         // Execute anchor's helper function to transfer tokens
-        anchor_spl::token::transfer(cpi_ctx, amount)?;
+        anchor_spl::token::transfer(cpi_ctx, 5)?;
  
         Ok(())
     }
@@ -226,6 +277,30 @@ pub struct Initialize<'info> {
     pub authority: Signer<'info>,
 }
 
+#[derive(Accounts)]
+#[instruction(
+    params: InitTokenParams
+)]
+pub struct InitToken<'info> {
+    /// CHECK: New Metaplex Account being created
+    #[account(mut)]
+    pub metadata: UncheckedAccount<'info>,
+    #[account(
+        init,
+        seeds = [b"mint"],
+        bump,
+        payer = payer,
+        mint::decimals = params.decimals,
+        mint::authority = mint,
+    )]
+    pub mint: Account<'info, Mint>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub rent: Sysvar<'info, Rent>,
+    pub system_program: Program<'info, System>,
+    pub token_program: Program<'info, Token>,
+    pub token_metadata_program: Program<'info, Metaplex>,
+}
 
 #[derive(Accounts)]
 pub struct MintToken<'info> {
@@ -330,4 +405,12 @@ pub struct InitializeExtraAccountMetaList<'info> {
 pub struct Counter {
     pub owner: Pubkey,
     pub count: u64,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Debug, Clone)]
+pub struct InitTokenParams {
+    pub name: String,
+    pub symbol: String,
+    pub uri: String,
+    pub decimals: u8,
 }
