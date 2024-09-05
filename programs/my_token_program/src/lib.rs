@@ -25,7 +25,7 @@ use anchor_spl::{
     },
 };
 
-declare_id!("J6zNmngkHVqYMXkAgZtUKCstQvV6MHCBXqijh2Tn4YJA");
+declare_id!("2GzYGFTqCsg4StJsj6REvL5PL3hLje276o5bBknCBoxR");
 
 // Sha256(spl-transfer-hook-interface:execute)[..8]
 pub const EXECUTE_IX_TAG_LE: [u8; 8] = [105, 37, 101, 197, 75, 251, 102, 26];
