@@ -31,7 +31,7 @@ import {
 } from "@solana/web3.js";
 
 import { assert } from "chai";
-import BN from "bn.js";
+import BN from "bn.js"; // Import BN for Big Number support
 
 const getProvider = () => anchor.AnchorProvider.env();
 const createTransaction = () => new anchor.web3.Transaction();
@@ -74,38 +74,6 @@ describe("my-token-program", () => {
   const decimals = 6;
 
   console.log(program.programId)
-
-  // Metaplex Constants
-  const METADATA_SEED = "metadata";
-  const TOKEN_METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
-
-  // Constants from our program
-  const MINT_SEED = "mint";
-
-  // Data for our tests
-  const payer = provider.wallet.publicKey;
-  const metadata = {
-    name: "Just a Test Token",
-    symbol: "TEST",
-    uri: "https://5vfxc4tr6xoy23qefqbj4qx2adzkzapneebanhcalf7myvn5gzja.arweave.net/7UtxcnH13Y1uBCwCnkL6APKsge0hAgacQFl-zFW9NlI",
-    decimals: 9,
-  };
-
-
-
-  const [mintPublicKey, mintBump] = PublicKey.findProgramAddressSync(
-    [Buffer.from(MINT_SEED)],
-    program.programId
-  );
-
-  const [metadataAddress] = PublicKey.findProgramAddressSync(
-    [
-      Buffer.from(METADATA_SEED),
-      TOKEN_METADATA_PROGRAM_ID.toBuffer(),
-      mintPublicKey.toBuffer(),
-    ],
-    TOKEN_METADATA_PROGRAM_ID
-  );
 
     // Helper function to confirm transactions
     async function confirmTransaction(
@@ -171,55 +139,7 @@ describe("my-token-program", () => {
     );
   });
 
-  it("initialize", async () => {
-    // Use provider's connection (from Anchor)
-    const connection = provider.connection;
-  
-    // Check if the mint account already exists
-    const info = await connection.getAccountInfo(mint.publicKey);
-    if (info) {
-      console.log("  Mint already initialized.");
-      return; // Do not attempt to initialize if already initialized
-    }
-  
-    console.log("  Mint not found. Attempting to initialize.");
-  
-    // Define context for the transaction, replace 'pg' with corresponding values
-    const context = {
-      metadata: metadataAddress,
-      mint: mintPublicKey,
-      payer: provider.wallet.publicKey, // Use provider wallet as payer
-      rent: SYSVAR_RENT_PUBKEY,
-      systemProgram: SystemProgram.programId,
-      tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID, // Correct program
-      tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID, 
-    };
-
-    console.log(context)
-  
-    // Send the transaction using the Anchor program instance
-    try {
-      const txHash = await program.methods
-        .initToken(metadata)
-        .accounts(context)
-        .rpc();
-  
-      console.log("  Transaction sent. Awaiting confirmation...");
-      
-      // Confirm the transaction using your connection
-      await confirmTransaction(connection, txHash, 'finalized');
-  
-      // Log the transaction on Solana explorer (Devnet)
-      console.log(`  https://explorer.solana.com/tx/${txHash}?cluster=devnet`);
-  
-      // Verify that the mint is initialized
-      const newInfo = await connection.getAccountInfo(mint.publicKey);
-      assert(newInfo, "  Mint should be initialized.");
-    } catch (error) {
-      console.error("  Error during transaction:", error);
-    }
-  });
-
+ 
   it("Mint a token", async () => {
     try {
       const walletPublicKey = provider.wallet.publicKey;
@@ -345,29 +265,39 @@ describe("my-token-program", () => {
 
   it("Get balance of token account", async () => {
     try {
-      // Log token account
+      // Log the associated token account address
       console.log(`Getting balance of token account: ${associatedTokenAccount.toString()}`);
   
       // Call the getBalance method from the Solana program
-      const balance = await program.methods
+      const balanceString: string = await program.methods
         .getBalance()
         .accounts({
           tokenAccount: associatedTokenAccount,
         })
-        .rpc();
+        .rpc();  // Use `.rpc()` to invoke the method.
+      
+      // Debugging: Log the returned balance string
+      console.log(`Returned balance string: ${balanceString}`);
   
-      // Convert the balance to a number or string as needed
-      const tokenBalance = Number(balance);  // If balance is returned as BigInt, convert it
+      // Convert the returned balance string to BN, only if it's a valid number
+      if (!/^\d+$/.test(balanceString)) {
+        throw new Error(`Invalid balance format: ${balanceString}`);
+      }
+      const balanceBN = new BN(balanceString); // Safe conversion
   
+      // Convert the BN balance to a number
+      const tokenBalance = balanceBN.toNumber();  // Safely convert to number if the balance isn't too large
+  
+      // Log and assert the balance
       console.log(`Token account balance: ${tokenBalance}`);
       
-      // Compare the token balance with the expected value
-      assert.equal(tokenBalance, 3, "The token balance should be 3");
+      assert.strictEqual(tokenBalance, 3, "The token balance should be 3");
   
     } catch (error) {
       console.error("Error during balance retrieval:", error);
     }
   });
+  
   it("create counter account", async () => {
     const [_counterPDA, _bump] = PublicKey.findProgramAddressSync(
       [authority.publicKey.toBuffer()],
@@ -466,47 +396,46 @@ describe("my-token-program", () => {
   });
 
   it("transfer token", async () => {
-    // Assuming mint, recipient, authority, decimals, and provider are already defined and available in your context
+    // Create associated token account for recipient and transfer 1 token
   
-    // 1. Create associated token account for the recipient
-    const recipientATA = getAssociatedTokenAddressSync(
-      mint.publicKey,          // Mint address of the token
-      recipient.publicKey,      // Recipient's public key
-      false,                    // If the recipient is not a PDA
-      TOKEN_2022_PROGRAM_ID     // Program ID for the new token program
-    );
-  
-    // 2. Transfer 1 token to the recipient
     const transferInstruction = createTransferCheckedInstruction(
-      authorityATA,            // Sender's associated token account (Authority's ATA)
-      mint.publicKey,          // Mint address
-      recipientATA,            // Recipient's associated token account
-      authority.publicKey,     // Sender's authority (owner)
-      BigInt(1 * 10 ** decimals), // Amount to transfer (consider decimals)
-      decimals,                // Number of decimals in the mint
-      [],                      // Additional signer accounts (if needed)
-      TOKEN_2022_PROGRAM_ID    // Token program ID (Token 2022)
+      authorityATA,
+      mint.publicKey,
+      recipientATA,
+      authority.publicKey,
+      1 * 10 ** decimals,
+      decimals,
+      [],
+      TOKEN_2022_PROGRAM_ID
     );
   
-    // If additional accounts need to be added, they can be pushed into the keys array:
-    // transferInstruction.keys.push({
-    //   pubkey: additionalAccount,
-    //   isSigner: false,
-    //   isWritable: false,
-    // });
+    // Define extra accounts required by your Transfer Hook logic
+    const extraAccountMetas = [
+      // Example: include the PDA or other program-required accounts
+      {
+        pubkey: counterPDA,
+        isSigner: false,
+        isWritable: true,
+      },
+      {
+        pubkey: TRANSFER_HOOK_PROGRAM_ID,
+        isSigner: false,
+        isWritable: false,
+      },
+      // Add any additional required accounts
+    ];
   
-    // 3. Create and send the transaction
+    // Add the extra accounts to the instruction manually
+    transferInstruction.keys.push(...extraAccountMetas);
+  
     const transferTransaction = new Transaction().add(transferInstruction);
-    
-    // Await transaction confirmation
     const signature = await sendAndConfirmTransaction(
-      provider.connection,      // Connection to Solana
-      transferTransaction,      // The transaction to send
-      [authority],              // Signers for the transaction (authority in this case)
-      { skipPreflight: false, commitment: "confirmed" }  // Optional transaction options
+      provider.connection,
+      transferTransaction,
+      [authority]
     );
   
-    console.log("Transfer confirmed. Transaction signature:", signature);
+    console.log("Transfer hash:", signature);
   });
 
   it("mint token", async () => {
